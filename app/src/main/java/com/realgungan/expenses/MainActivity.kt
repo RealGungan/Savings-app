@@ -29,13 +29,37 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// Define a separator that is unlikely to be in the expense description
+private const val LIST_SEPARATOR = "::::"
+
 @Composable
 fun ExpensesApp() {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("expenses_prefs", Context.MODE_PRIVATE) }
 
     val initialAmount = remember { prefs.getString("available_amount", "") ?: "" }
-    val initialItems = remember { prefs.getStringSet("expenses_items", emptySet())?.toList() ?: emptyList() }
+
+    // Handle SharedPreferences migration for the items list
+    val initialItems = remember {
+        val itemsPref = prefs.all["expenses_items"]
+        var loadedItems: List<String> = emptyList()
+
+        if (itemsPref is String) {
+            // New format: Load the string and split it
+            val savedString = itemsPref
+            if (savedString.isNotEmpty()) {
+                loadedItems = savedString.split(LIST_SEPARATOR)
+            }
+        } else if (itemsPref is Set<*>) {
+            // Old format: Load the Set, then remove it.
+            // The LaunchedEffect will re-save it in the new String format.
+            @Suppress("UNCHECKED_CAST")
+            val savedSet = itemsPref as? Set<String> ?: emptySet()
+            loadedItems = savedSet.toList()
+            prefs.edit().remove("expenses_items").apply()
+        }
+        loadedItems
+    }
 
     val items = remember { mutableStateListOf(*initialItems.toTypedArray()) }
     var availableAmount by remember { mutableStateOf(initialAmount) }
@@ -45,7 +69,8 @@ fun ExpensesApp() {
     LaunchedEffect(availableAmount, items.toList()) {
         with(prefs.edit()) {
             putString("available_amount", availableAmount)
-            putStringSet("expenses_items", items.toSet())
+            // Join the list into a single string to preserve order
+            putString("expenses_items", items.joinToString(LIST_SEPARATOR))
             apply()
         }
     }
@@ -66,7 +91,8 @@ fun ExpensesApp() {
                     if (expenseAmount != null && currentAvailable != null) {
                         val newAmount = currentAvailable - expenseAmount
                         availableAmount = String.format("%.2f", newAmount)
-                        items.add(newExpenseInput)
+                        // Add new items to the top of the list (index 0)
+                        items.add(0, newExpenseInput)
                         newExpenseInput = ""
                     }
                 }
