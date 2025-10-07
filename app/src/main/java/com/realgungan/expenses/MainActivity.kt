@@ -1,9 +1,9 @@
 package com.realgungan.expenses
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -14,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -23,65 +24,84 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            ExpensesTheme(darkTheme = true) {
-                val items = remember { mutableStateListOf<String>() }
-                var availableAmount by remember { mutableStateOf("") }
-                var newExpenseInput by remember { mutableStateOf("") }
-
-                MainScreen(
-                    items = items,
-                    availableAmount = availableAmount,
-                    newExpenseInput = newExpenseInput,
-                    onAvailableAmountChange = { availableAmount = it },
-                    onNewExpenseInputChange = { newExpenseInput = it },
-                    onAdd = {
-                        val parts = newExpenseInput.split(",").map { it.trim() }
-                        if (parts.size == 2) {
-                            val expenseAmount = parts[1].toDoubleOrNull()
-                            val currentAvailable = availableAmount.toDoubleOrNull()
-
-                            if (expenseAmount != null && currentAvailable != null) {
-                                val newAmount = currentAvailable - expenseAmount
-                                availableAmount = String.format("%.2f", newAmount)
-                                items.add(newExpenseInput)
-                                newExpenseInput = ""
-                            }
-                        }
-                    },
-                    onRemove = { index ->
-                        val item = items.getOrNull(index)
-                        if (item != null) {
-                            val parts = item.split(",").map { it.trim() }
-                            if (parts.size == 2) {
-                                val expenseAmount = parts[1].toDoubleOrNull()
-                                val currentAvailable = availableAmount.toDoubleOrNull()
-                                if (expenseAmount != null && currentAvailable != null) {
-                                    val newAmount = currentAvailable + expenseAmount
-                                    availableAmount = String.format("%.2f", newAmount)
-                                    items.removeAt(index)
-                                }
-                            }
-                        }
-                    },
-                    onSaveEdit = { index, updatedText ->
-                        val originalItem = items.getOrNull(index) ?: return@MainScreen
-
-                        val originalAmount = originalItem.split(",").getOrNull(1)?.trim()?.toDoubleOrNull() ?: 0.0
-                        val updatedAmount = updatedText.split(",").getOrNull(1)?.trim()?.toDoubleOrNull() ?: 0.0
-
-                        val difference = originalAmount - updatedAmount
-                        val currentAvailable = availableAmount.toDoubleOrNull() ?: 0.0
-                        availableAmount = String.format("%.2f", currentAvailable + difference)
-
-                        items[index] = updatedText
-                    }
-                )
-            }
+            ExpensesApp()
         }
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun ExpensesApp() {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("expenses_prefs", Context.MODE_PRIVATE) }
+
+    val initialAmount = remember { prefs.getString("available_amount", "") ?: "" }
+    val initialItems = remember { prefs.getStringSet("expenses_items", emptySet())?.toList() ?: emptyList() }
+
+    val items = remember { mutableStateListOf(*initialItems.toTypedArray()) }
+    var availableAmount by remember { mutableStateOf(initialAmount) }
+    var newExpenseInput by remember { mutableStateOf("") }
+
+    // Save data whenever it changes
+    LaunchedEffect(availableAmount, items.toList()) {
+        with(prefs.edit()) {
+            putString("available_amount", availableAmount)
+            putStringSet("expenses_items", items.toSet())
+            apply()
+        }
+    }
+
+    ExpensesTheme(darkTheme = true) {
+        MainScreen(
+            items = items,
+            availableAmount = availableAmount,
+            newExpenseInput = newExpenseInput,
+            onAvailableAmountChange = { availableAmount = it },
+            onNewExpenseInputChange = { newExpenseInput = it },
+            onAdd = {
+                val parts = newExpenseInput.split(",").map { it.trim() }
+                if (parts.size == 2) {
+                    val expenseAmount = parts[1].toDoubleOrNull()
+                    val currentAvailable = availableAmount.toDoubleOrNull()
+
+                    if (expenseAmount != null && currentAvailable != null) {
+                        val newAmount = currentAvailable - expenseAmount
+                        availableAmount = String.format("%.2f", newAmount)
+                        items.add(newExpenseInput)
+                        newExpenseInput = ""
+                    }
+                }
+            },
+            onRemove = { index ->
+                val item = items.getOrNull(index)
+                if (item != null) {
+                    val parts = item.split(",").map { it.trim() }
+                    if (parts.size == 2) {
+                        val expenseAmount = parts[1].toDoubleOrNull()
+                        val currentAvailable = availableAmount.toDoubleOrNull()
+                        if (expenseAmount != null && currentAvailable != null) {
+                            val newAmount = currentAvailable + expenseAmount
+                            availableAmount = String.format("%.2f", newAmount)
+                            items.removeAt(index)
+                        }
+                    }
+                }
+            },
+            onSaveEdit = { index, updatedText ->
+                val originalItem = items.getOrNull(index) ?: return@MainScreen
+
+                val originalAmount = originalItem.split(",").getOrNull(1)?.trim()?.toDoubleOrNull() ?: 0.0
+                val updatedAmount = updatedText.split(",").getOrNull(1)?.trim()?.toDoubleOrNull() ?: 0.0
+
+                val difference = originalAmount - updatedAmount
+                val currentAvailable = availableAmount.toDoubleOrNull() ?: 0.0
+                availableAmount = String.format("%.2f", currentAvailable + difference)
+
+                items[index] = updatedText
+            }
+        )
+    }
+}
+
 @Composable
 fun MainScreen(
     items: List<String>,
@@ -168,7 +188,7 @@ fun MainScreen(
                         if (incomeInput.isNotEmpty() && percentageInput.isNotEmpty()) {
                             val income = incomeInput.toInt()
                             val percentage = percentageInput.toInt()
-                            val result = income - (income * percentage)
+                            val result = income - (income * percentage / 100)
                             onAvailableAmountChange(result.toString())
                         }
                     }
@@ -202,50 +222,52 @@ fun MainScreen(
             }
         }
     ) { innerPadding ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            stickyHeader {
-                Surface(
-                    modifier = Modifier.fillParentMaxWidth(),
-                    shadowElevation = 4.dp
-                ) {
-                    Text(
-                        text = "Available: $availableAmount",
-                        style = MaterialTheme.typography.headlineMedium,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
-
-            itemsIndexed(items) { index, item ->
-                Card(
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shadowElevation = 4.dp
+            ) {
+                Text(
+                    text = "Available: $availableAmount",
+                    style = MaterialTheme.typography.headlineMedium,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    elevation = CardDefaults.cardElevation(4.dp)
-                ) {
-                    Row(
+                        .padding(16.dp),
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            LazyColumn(
+                modifier = Modifier.weight(1f)
+            ) {
+                itemsIndexed(items) { index, item ->
+                    Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        elevation = CardDefaults.cardElevation(4.dp)
                     ) {
-                        Text(
-                            text = item,
-                            modifier = Modifier.weight(1f)
-                        )
-                        IconButton(onClick = { editingItemIndex = index }) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit")
-                        }
-                        IconButton(onClick = { onRemove(index) }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Remove")
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = item,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(onClick = { editingItemIndex = index }) {
+                                Icon(Icons.Default.Edit, contentDescription = "Edit")
+                            }
+                            IconButton(onClick = { onRemove(index) }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Remove")
+                            }
                         }
                     }
                 }
