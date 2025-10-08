@@ -36,6 +36,9 @@ fun MainScreen(
     availableAmount: Double,
     showNewMonthPrompt: Boolean,
     lastDeletedExpense: Pair<Int, Expense>?,
+    monthToOverwrite: MonthData?,
+    onConfirmOverwrite: () -> Unit,
+    onCancelOverwrite: () -> Unit,
     onUndoDelete: () -> Unit,
     onUndoPromptShown: () -> Unit,
     onNewMonthPromptShown: () -> Unit,
@@ -46,12 +49,14 @@ fun MainScreen(
     onAddExpense: (Expense) -> Unit,
     onRemoveExpense: (Int) -> Unit,
     onSaveExpenseEdit: (Int, Expense) -> Unit,
-    onStartingAmountChange: (Double) -> Unit
+    onStartingAmountChange: (Double) -> Unit,
+    onImportMonth: (String) -> Unit
 ) {
     var newExpenseInput by remember { mutableStateOf("") }
     var editingExpenseIndex by remember { mutableStateOf<Int?>(null) }
     var showIncomeDialog by remember { mutableStateOf(false) }
     var showMonthSelector by remember { mutableStateOf(false) }
+    var showImportDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
@@ -98,7 +103,26 @@ fun MainScreen(
                 onMonthSelected(it)
                 showMonthSelector = false
             },
-            onDeleteMonth = onDeleteMonth
+            onDeleteMonth = onDeleteMonth,
+            onShowImportDialog = { showImportDialog = true }
+        )
+    }
+
+    if (showImportDialog) {
+        ImportDialog(
+            onDismiss = { showImportDialog = false },
+            onImport = {
+                onImportMonth(it)
+                showImportDialog = false
+            }
+        )
+    }
+
+    if (monthToOverwrite != null) {
+        OverwriteConfirmationDialog(
+            monthName = monthToOverwrite.monthYear,
+            onConfirm = onConfirmOverwrite,
+            onDismiss = onCancelOverwrite
         )
     }
 
@@ -240,7 +264,8 @@ fun MonthSelectionDialog(
     months: List<MonthData>,
     onDismiss: () -> Unit,
     onMonthSelected: (Int) -> Unit,
-    onDeleteMonth: (Int) -> Unit
+    onDeleteMonth: (Int) -> Unit,
+    onShowImportDialog: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Scaffold(
@@ -250,6 +275,11 @@ fun MonthSelectionDialog(
                     navigationIcon = {
                         IconButton(onClick = onDismiss) {
                             Icon(Icons.Default.Close, contentDescription = "Close")
+                        }
+                    },
+                    actions = {
+                        TextButton(onClick = onShowImportDialog) {
+                            Text("Import")
                         }
                     }
                 )
@@ -306,6 +336,51 @@ fun IncomeDialog(onDismiss: () -> Unit, onConfirm: (amount: Double) -> Unit) {
     )
 }
 
+@Composable
+fun ImportDialog(onDismiss: () -> Unit, onImport: (String) -> Unit) {
+    var text by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Paste text to import") },
+        text = {
+            TextField(
+                value = text,
+                onValueChange = { text = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Paste your expense report here") }
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onImport(text) }) {
+                Text("Import")
+            }
+        }
+    )
+}
+
+@Composable
+fun OverwriteConfirmationDialog(
+    monthName: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Overwrite Month?") },
+        text = { Text("The month '$monthName' already exists. Do you want to overwrite it with the imported data?") },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("Overwrite")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
 
 @Composable
 fun EditExpenseDialog(expense: Expense, onDismiss: () -> Unit, onSave: (String) -> Unit) {
@@ -339,6 +414,9 @@ fun MainScreenPreview() {
             availableAmount = 350.0,
             showNewMonthPrompt = false,
             lastDeletedExpense = null,
+            monthToOverwrite = null,
+            onConfirmOverwrite = {},
+            onCancelOverwrite = {},
             onUndoDelete = {},
             onUndoPromptShown = {},
             onNewMonthPromptShown = {},
@@ -349,7 +427,8 @@ fun MainScreenPreview() {
             onAddExpense = {},
             onRemoveExpense = {},
             onSaveExpenseEdit = { _, _ -> },
-            onStartingAmountChange = {}
+            onStartingAmountChange = {},
+            onImportMonth = { _ -> }
         )
     }
 }
