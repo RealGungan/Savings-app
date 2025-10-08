@@ -52,37 +52,39 @@ fun ExpensesApp() {
         currentMonthIndex = 0
     }
 
+    fun exportMonth(monthToExport: MonthData) {
+        val totalExpenses = monthToExport.expenses.sumOf { it.amount }
+        val finalBalance = monthToExport.startingAmount - totalExpenses
+
+        val shareableString = buildString {
+            appendLine("Expense Report for ${monthToExport.monthYear}")
+            appendLine("--------------------")
+            appendLine("Starting Amount: ${"%.2f".format(monthToExport.startingAmount)}")
+            appendLine()
+            appendLine("Expenses:")
+            monthToExport.expenses.forEach {
+                appendLine("- ${it.description}: ${"%.2f".format(it.amount)}")
+            }
+            appendLine()
+            appendLine("--------------------")
+            appendLine("Total Expenses: ${"%.2f".format(totalExpenses)}")
+            appendLine("Final Balance: ${"%.2f".format(finalBalance)}")
+        }
+
+        val sendIntent: Intent = Intent().apply {
+            action = Intent.ACTION_SEND
+            putExtra(Intent.EXTRA_TEXT, shareableString)
+            type = "text/plain"
+        }
+
+        val shareIntent = Intent.createChooser(sendIntent, "Export Month Report")
+        context.startActivity(shareIntent)
+    }
+
     val currentMonth = months.getOrNull(currentMonthIndex)
 
     if (currentMonth != null) {
         val availableAmount = currentMonth.startingAmount - currentMonth.expenses.sumOf { it.amount }
-
-        fun exportMonth() {
-            val totalExpenses = currentMonth.expenses.sumOf { it.amount }
-            val finalBalance = currentMonth.startingAmount - totalExpenses
-
-            val shareableString = buildString {
-                appendLine("Expense Report for ${currentMonth.monthYear}")
-                appendLine("--------------------")
-                appendLine("Starting Amount: ${"%.2f".format(currentMonth.startingAmount)}")
-                appendLine("\nExpenses:")
-                currentMonth.expenses.forEach {
-                    appendLine("- ${it.description}: ${"%.2f".format(it.amount)}")
-                }
-                appendLine("\n--------------------")
-                appendLine("Total Wasted: ${"%.2f".format(totalExpenses)}")
-                appendLine("Amount Left: ${"%.2f".format(finalBalance)}")
-            }
-
-            val sendIntent: Intent = Intent().apply {
-                action = Intent.ACTION_SEND
-                putExtra(Intent.EXTRA_TEXT, shareableString)
-                type = "text/plain"
-            }
-
-            val shareIntent = Intent.createChooser(sendIntent, "Export Month Report")
-            context.startActivity(shareIntent)
-        }
 
         ExpensesTheme(darkTheme = true) {
             MainScreen(

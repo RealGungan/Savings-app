@@ -33,7 +33,7 @@ fun MainScreen(
     onMonthSelected: (Int) -> Unit,
     onAddNewMonth: () -> Unit,
     onDeleteMonth: (Int) -> Unit,
-    onExportMonth: () -> Unit,
+    onExportMonth: (MonthData) -> Unit,
     onAddExpense: (Expense) -> Unit,
     onRemoveExpense: (Int) -> Unit,
     onSaveExpenseEdit: (Int, Expense) -> Unit,
@@ -103,7 +103,7 @@ fun MainScreen(
                 TextField(
                     value = newExpenseInput,
                     onValueChange = { newExpenseInput = it },
-                    placeholder = { Text("Beer, 3.5") },
+                    placeholder = { Text("CHEVECHA, 3.5") },
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(Modifier.width(8.dp))
@@ -149,7 +149,7 @@ fun MainScreen(
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .clickable { onExportMonth() }
+                        .clickable { onExportMonth(currentMonth) }
                 )
 
                 IconButton(
@@ -308,7 +308,7 @@ fun MainScreenPreview() {
             onMonthSelected = {},
             onAddNewMonth = {},
             onDeleteMonth = {},
-            onExportMonth = {},
+            onExportMonth = { _ -> },
             onAddExpense = {},
             onRemoveExpense = {},
             onSaveExpenseEdit = { _, _ -> },
