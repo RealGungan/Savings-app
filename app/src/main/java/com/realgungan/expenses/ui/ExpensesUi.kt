@@ -13,6 +13,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -143,9 +145,21 @@ fun MainScreen(
                         .clickable { showMonthSelector = true }
                 )
 
+                val availableColor = if (currentMonth.startingAmount > 0) {
+                    val fraction = (availableAmount / currentMonth.startingAmount).toFloat().coerceIn(0f, 1f)
+                    if (fraction > 0.5f) {
+                        lerp(Color.Yellow, Color.Green, (fraction - 0.5f) * 2f)
+                    } else {
+                        lerp(Color.Red, Color.Yellow, fraction * 2f)
+                    }
+                } else {
+                    Color.Unspecified
+                }
+
                 Text(
                     text = String.format("Available: %.2f", availableAmount),
                     style = MaterialTheme.typography.titleLarge,
+                    color = availableColor,
                     modifier = Modifier
                         .align(Alignment.Center)
                         .clickable { onExportMonth(currentMonth) }
