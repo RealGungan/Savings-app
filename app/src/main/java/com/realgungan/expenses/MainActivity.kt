@@ -44,7 +44,7 @@ fun ExpensesApp() {
     fun deleteMonth(index: Int) {
         val newMonths = months.toMutableList().also { it.removeAt(index) }
         if (newMonths.isEmpty()) {
-            months = listOf(createNewMonth(null))
+            months = listOf(createNewMonth())
         } else {
             months = newMonths
         }
@@ -96,7 +96,7 @@ fun ExpensesApp() {
                 onNewMonthPromptShown = { showNewMonthPrompt = false },
                 onMonthSelected = { index -> currentMonthIndex = index },
                 onAddNewMonth = {
-                    val newMonth = createNewMonth(months.firstOrNull())
+                    val newMonth = createNewMonth()
                     months = listOf(newMonth) + months
                     currentMonthIndex = 0
                     showNewMonthPrompt = true
@@ -116,8 +116,7 @@ fun ExpensesApp() {
                     updateMonth(currentMonthIndex, currentMonth.copy(expenses = newExpenses))
                 },
                 onStartingAmountChange = { newAmount ->
-                    val updatedAmount = currentMonth.startingAmount + newAmount
-                    updateMonth(currentMonthIndex, currentMonth.copy(startingAmount = updatedAmount))
+                    updateMonth(currentMonthIndex, currentMonth.copy(startingAmount = newAmount))
                 }
             )
         }

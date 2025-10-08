@@ -19,10 +19,10 @@ internal fun loadMonths(prefs: SharedPreferences): List<MonthData> {
         try {
             Json.decodeFromString<List<MonthData>>(jsonString)
         } catch (e: Exception) {
-            listOf(createNewMonth(null))
+            listOf(createNewMonth())
         }
     } else {
-        listOf(createNewMonth(null))
+        listOf(createNewMonth())
     }
 }
 
@@ -31,10 +31,9 @@ internal fun saveMonths(prefs: SharedPreferences, months: List<MonthData>) {
     prefs.edit().putString("all_months_data", jsonString).apply()
 }
 
-internal fun createNewMonth(previousMonth: MonthData?): MonthData {
+internal fun createNewMonth(): MonthData {
     val sdf = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
     val newMonthName = sdf.format(Date())
-    // Calculate carry-over from the PREVIOUS month's final balance
-    val carryOver = previousMonth?.let { it.startingAmount - it.expenses.sumOf { exp -> exp.amount } } ?: 0.0
-    return MonthData(monthYear = newMonthName, startingAmount = carryOver, expenses = emptyList())
+    // New months start with a clean slate.
+    return MonthData(monthYear = newMonthName, startingAmount = 0.0, expenses = emptyList())
 }

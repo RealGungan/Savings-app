@@ -56,9 +56,8 @@ fun MainScreen(
     if (showIncomeDialog) {
         IncomeDialog(
             onDismiss = { showIncomeDialog = false },
-            onConfirm = { income, percentage ->
-                val startingAmount = income - (income * percentage / 100)
-                onStartingAmountChange(startingAmount.toDouble())
+            onConfirm = {
+                onStartingAmountChange(it)
                 showIncomeDialog = false
             }
         )
@@ -103,7 +102,7 @@ fun MainScreen(
                 TextField(
                     value = newExpenseInput,
                     onValueChange = { newExpenseInput = it },
-                    placeholder = { Text("CHEVECHA, 3.5") },
+                    placeholder = { Text("Beer, 3.5") },
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(Modifier.width(8.dp))
@@ -232,43 +231,31 @@ fun MonthSelectionDialog(
 }
 
 @Composable
-fun IncomeDialog(onDismiss: () -> Unit, onConfirm: (income: Int, percentage: Int) -> Unit) {
-    var incomeInput by remember { mutableStateOf("") }
-    var percentageInput by remember { mutableStateOf("") }
-    var showPercentageDialog by remember { mutableStateOf(false) }
+fun IncomeDialog(onDismiss: () -> Unit, onConfirm: (amount: Double) -> Unit) {
+    var amountInput by remember { mutableStateOf("") }
 
-    if (!showPercentageDialog) {
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text("How much do you earn?") },
-            text = { TextField(value = incomeInput, onValueChange = { incomeInput = it }) },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (incomeInput.toIntOrNull() != null) showPercentageDialog = true
-                }) {
-                    Text("Next")
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Budget for this month") },
+        text = {
+            TextField(
+                value = amountInput,
+                onValueChange = { amountInput = it },
+                placeholder = { Text("e.g., 500") }
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                amountInput.toDoubleOrNull()?.let {
+                    onConfirm(it)
                 }
+            }) {
+                Text("Confirm")
             }
-        )
-    } else {
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text("How much you wanna save (%)?") },
-            text = { TextField(value = percentageInput, onValueChange = { percentageInput = it }) },
-            confirmButton = {
-                TextButton(onClick = {
-                    val income = incomeInput.toIntOrNull()
-                    val percentage = percentageInput.toIntOrNull()
-                    if (income != null && percentage != null) {
-                        onConfirm(income, percentage)
-                    }
-                }) {
-                    Text("Confirm")
-                }
-            }
-        )
-    }
+        }
+    )
 }
+
 
 @Composable
 fun EditExpenseDialog(expense: Expense, onDismiss: () -> Unit, onSave: (String) -> Unit) {
@@ -291,10 +278,7 @@ fun MainScreenPreview() {
             MonthData(
                 monthYear = "January 2024",
                 startingAmount = 1000.0,
-                expenses = mutableListOf(
-                    Expense("Groceries", 150.0),
-                    Expense("Rent", 500.0)
-                ).toList()
+                expenses = emptyList()
             )
         )
 
