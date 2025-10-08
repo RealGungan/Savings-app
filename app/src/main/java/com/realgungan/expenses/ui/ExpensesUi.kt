@@ -23,6 +23,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.realgungan.expenses.data.Expense
 import com.realgungan.expenses.data.MonthData
 import com.realgungan.expenses.ui.theme.ExpensesTheme
+import kotlinx.coroutines.launch
 
 @Composable
 fun MainScreen(
@@ -31,6 +32,9 @@ fun MainScreen(
     currentMonthIndex: Int,
     availableAmount: Double,
     showNewMonthPrompt: Boolean,
+    lastDeletedExpense: Pair<Int, Expense>?,
+    onUndoDelete: () -> Unit,
+    onUndoPromptShown: () -> Unit,
     onNewMonthPromptShown: () -> Unit,
     onMonthSelected: (Int) -> Unit,
     onAddNewMonth: () -> Unit,
@@ -45,6 +49,8 @@ fun MainScreen(
     var editingExpenseIndex by remember { mutableStateOf<Int?>(null) }
     var showIncomeDialog by remember { mutableStateOf(false) }
     var showMonthSelector by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(currentMonth, showNewMonthPrompt) {
         if (showNewMonthPrompt) {
@@ -52,6 +58,22 @@ fun MainScreen(
             onNewMonthPromptShown()
         } else if (currentMonth.startingAmount == 0.0 && currentMonth.expenses.isEmpty()) {
             showIncomeDialog = true
+        }
+    }
+
+    LaunchedEffect(lastDeletedExpense) {
+        if (lastDeletedExpense != null) {
+            coroutineScope.launch {
+                val result = snackbarHostState.showSnackbar(
+                    message = "Expense deleted",
+                    actionLabel = "Undo",
+                    withDismissAction = true
+                )
+                if (result == SnackbarResult.ActionPerformed) {
+                    onUndoDelete()
+                }
+                onUndoPromptShown()
+            }
         }
     }
 
@@ -96,6 +118,7 @@ fun MainScreen(
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         bottomBar = {
             Row(
                 Modifier.fillMaxWidth().padding(16.dp),
@@ -104,7 +127,7 @@ fun MainScreen(
                 TextField(
                     value = newExpenseInput,
                     onValueChange = { newExpenseInput = it },
-                    placeholder = { Text("Beer, 3.5") },
+                    placeholder = { Text("CHEVECHA, 3.5") },
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(Modifier.width(8.dp))
@@ -302,6 +325,9 @@ fun MainScreenPreview() {
             currentMonthIndex = 0,
             availableAmount = 350.0,
             showNewMonthPrompt = false,
+            lastDeletedExpense = null,
+            onUndoDelete = {},
+            onUndoPromptShown = {},
             onNewMonthPromptShown = {},
             onMonthSelected = {},
             onAddNewMonth = {},

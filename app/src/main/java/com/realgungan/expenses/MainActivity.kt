@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
+import com.realgungan.expenses.data.Expense
 import com.realgungan.expenses.data.MonthData
 import com.realgungan.expenses.data.createNewMonth
 import com.realgungan.expenses.data.loadMonths
@@ -31,6 +32,7 @@ fun ExpensesApp() {
     var months by remember { mutableStateOf(loadMonths(prefs)) }
     var currentMonthIndex by remember { mutableStateOf(0) }
     var showNewMonthPrompt by remember { mutableStateOf(false) }
+    var lastDeletedExpense by remember { mutableStateOf<Pair<Int, Expense>?>(null) }
 
     // Save data whenever it changes
     LaunchedEffect(months) {
@@ -86,6 +88,14 @@ fun ExpensesApp() {
     if (currentMonth != null) {
         val availableAmount = currentMonth.startingAmount - currentMonth.expenses.sumOf { it.amount }
 
+        fun undoDelete() {
+            lastDeletedExpense?.let { (index, expense) ->
+                val newExpenses = currentMonth.expenses.toMutableList().apply { add(index, expense) }
+                updateMonth(currentMonthIndex, currentMonth.copy(expenses = newExpenses))
+            }
+            lastDeletedExpense = null
+        }
+
         ExpensesTheme(darkTheme = true) {
             MainScreen(
                 months = months,
@@ -93,6 +103,9 @@ fun ExpensesApp() {
                 currentMonthIndex = currentMonthIndex,
                 availableAmount = availableAmount,
                 showNewMonthPrompt = showNewMonthPrompt,
+                lastDeletedExpense = lastDeletedExpense,
+                onUndoDelete = ::undoDelete,
+                onUndoPromptShown = { lastDeletedExpense = null },
                 onNewMonthPromptShown = { showNewMonthPrompt = false },
                 onMonthSelected = { index -> currentMonthIndex = index },
                 onAddNewMonth = {
@@ -108,6 +121,7 @@ fun ExpensesApp() {
                     updateMonth(currentMonthIndex, currentMonth.copy(expenses = newExpenses))
                 },
                 onRemoveExpense = { expenseIndex ->
+                    lastDeletedExpense = currentMonth.expenses[expenseIndex].let { expenseIndex to it }
                     val newExpenses = currentMonth.expenses.toMutableList().also { it.removeAt(expenseIndex) }
                     updateMonth(currentMonthIndex, currentMonth.copy(expenses = newExpenses))
                 },
