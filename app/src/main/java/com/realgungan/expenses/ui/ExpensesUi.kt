@@ -24,6 +24,9 @@ import com.realgungan.expenses.data.Expense
 import com.realgungan.expenses.data.MonthData
 import com.realgungan.expenses.ui.theme.ExpensesTheme
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun MainScreen(
@@ -206,7 +209,17 @@ fun MainScreen(
                             modifier = Modifier.padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(text = "${expense.description}, ${expense.amount}", modifier = Modifier.weight(1f))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(text = "${expense.description}, ${expense.amount}")
+                                expense.timestamp?.let {
+                                    val sdf = SimpleDateFormat("EEEE: d - HH:mm", Locale.getDefault())
+                                    Text(
+                                        text = sdf.format(Date(it)),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
                             IconButton(onClick = { editingExpenseIndex = index }) {
                                 Icon(Icons.Default.Edit, contentDescription = "Edit")
                             }

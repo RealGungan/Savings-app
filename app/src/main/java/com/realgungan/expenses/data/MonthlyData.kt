@@ -8,7 +8,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @Serializable
-data class Expense(val description: String, val amount: Double)
+data class Expense(val description: String, val amount: Double, val timestamp: Long? = null)
 
 @Serializable
 data class MonthData(val monthYear: String, val startingAmount: Double, val expenses: List<Expense>)

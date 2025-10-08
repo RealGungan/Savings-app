@@ -117,7 +117,7 @@ fun ExpensesApp() {
                 onDeleteMonth = ::deleteMonth,
                 onExportMonth = ::exportMonth,
                 onAddExpense = { expense ->
-                    val newExpenses = listOf(expense) + currentMonth.expenses
+                    val newExpenses = listOf(expense.copy(timestamp = System.currentTimeMillis())) + currentMonth.expenses
                     updateMonth(currentMonthIndex, currentMonth.copy(expenses = newExpenses))
                 },
                 onRemoveExpense = { expenseIndex ->
