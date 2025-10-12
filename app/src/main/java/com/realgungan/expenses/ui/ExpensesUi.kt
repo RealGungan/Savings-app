@@ -160,11 +160,16 @@ fun MainScreen(
                 Spacer(Modifier.width(8.dp))
                 Button(
                     onClick = {
-                        val parts = newExpenseInput.split(",").map(String::trim)
+                        val parts = newExpenseInput.split(",").map { it.trim() }
                         if (parts.size == 2) {
-                            val amount = parts[1].toDoubleOrNull()
+                            val description = parts[0]
+                            val amountPart = parts[1]
+                            val isDeferred = amountPart.contains("D", ignoreCase = true)
+                            val amountString = amountPart.replace("D", "", ignoreCase = true).trim()
+                            val amount = amountString.toDoubleOrNull()
+
                             if (amount != null) {
-                                onAddExpense(Expense(description = parts[0], amount = amount))
+                                onAddExpense(Expense(description = description, amount = amount, isDeferred = isDeferred))
                                 newExpenseInput = ""
                             }
                         }
@@ -234,7 +239,7 @@ fun MainScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(text = "${expense.description}, ${expense.amount}")
+                                Text(text = "${expense.description}, ${expense.amount} ${if (expense.isDeferred) "(D)" else ""}")
                                 expense.timestamp?.let {
                                     val sdf = SimpleDateFormat("EEEE: d - HH:mm", Locale.getDefault())
                                     Text(

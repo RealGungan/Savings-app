@@ -150,7 +150,7 @@ fun ExpensesApp() {
     val currentMonth = months.getOrNull(currentMonthIndex)
 
     if (currentMonth != null) {
-        val availableAmount = currentMonth.startingAmount - currentMonth.expenses.sumOf { it.amount }
+        val availableAmount = currentMonth.startingAmount - currentMonth.expenses.filter { !it.isDeferred }.sumOf { it.amount }
 
         fun undoDelete() {
             lastDeletedExpense?.let { (index, expense) ->
@@ -176,7 +176,11 @@ fun ExpensesApp() {
                 onNewMonthPromptShown = { showNewMonthPrompt = false },
                 onMonthSelected = { index -> currentMonthIndex = index },
                 onAddNewMonth = {
-                    val newMonth = createNewMonth()
+                    val deferredExpenses = currentMonth.expenses
+                        .filter { it.isDeferred }
+                        .map { it.copy(isDeferred = false) } // These are now regular expenses
+
+                    val newMonth = createNewMonth().copy(expenses = deferredExpenses.reversed())
                     months = listOf(newMonth) + months
                     currentMonthIndex = 0
                     showNewMonthPrompt = true
@@ -198,6 +202,9 @@ fun ExpensesApp() {
                     updateMonth(currentMonthIndex, currentMonth.copy(expenses = newExpenses))
                 },
                 onStartingAmountChange = { newAmount ->
+                    // The user provides the total budget for the month.
+                    // The new month object already contains any expenses carried over from the previous month.
+                    // So, we just need to set the startingAmount, and the availableAmount will be calculated correctly.
                     updateMonth(currentMonthIndex, currentMonth.copy(startingAmount = newAmount))
                 }
             )
