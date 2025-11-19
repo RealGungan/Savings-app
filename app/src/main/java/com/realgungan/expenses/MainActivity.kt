@@ -2,11 +2,23 @@ package com.realgungan.expenses
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import com.realgungan.expenses.data.Expense
 import com.realgungan.expenses.data.MonthData
 import com.realgungan.expenses.data.createNewMonth
@@ -14,22 +26,93 @@ import com.realgungan.expenses.data.loadMonths
 import com.realgungan.expenses.data.saveMonths
 import com.realgungan.expenses.ui.MainScreen
 import com.realgungan.expenses.ui.theme.ExpensesTheme
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
+
+    private var fileUri by mutableStateOf<Uri?>(null)
+
+    private val createFileLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri?.let {
+            fileUri = it
+            contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        }
+    }
+
+    private val openFileLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let {
+            fileUri = it
+            contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            ExpensesApp()
+            val context = LocalContext.current
+            val prefs = remember {
+                context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            }
+            val savedUriString = prefs.getString("file_uri", null)
+
+            if (savedUriString != null) {
+                fileUri = Uri.parse(savedUriString)
+            }
+
+            if (fileUri == null) {
+                FilePickerScreen(
+                    onCreateFile = { createFileLauncher.launch("expenses_data.json") },
+                    onOpenFile = { openFileLauncher.launch(arrayOf("application/json")) }
+                )
+            } else {
+                fileUri?.let { uri ->
+                    LaunchedEffect(uri) {
+                        prefs.edit().putString("file_uri", uri.toString()).apply()
+                    }
+                    ExpensesApp(uri)
+                }
+            }
         }
     }
 }
 
 @Composable
-fun ExpensesApp() {
-    val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("expenses_prefs", Context.MODE_PRIVATE) }
+fun FilePickerScreen(onCreateFile: () -> Unit, onOpenFile: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "To sync your data, please create a new expense file or open an existing one.",
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(bottom = 24.dp)
+        )
+        Button(onClick = onCreateFile) {
+            Text("Create a New Expense File")
+        }
+        Text("Or", modifier = Modifier.padding(vertical = 8.dp))
+        Button(onClick = onOpenFile) {
+            Text("Open an Existing File")
+        }
+    }
+}
 
-    var months by remember { mutableStateOf(loadMonths(prefs)) }
+@Composable
+fun ExpensesApp(uri: Uri) {
+    ExpensesTheme(darkTheme = true) {
+        ExpensesAppContent(uri)
+    }
+}
+
+
+@Composable
+fun ExpensesAppContent(uri: Uri) {
+    val context = LocalContext.current
+
+    var months by remember { mutableStateOf(loadMonths(context, uri)) }
     var currentMonthIndex by remember { mutableStateOf(0) }
     var showNewMonthPrompt by remember { mutableStateOf(false) }
     var lastDeletedExpense by remember { mutableStateOf<Pair<Int, Expense>?>(null) }
@@ -37,7 +120,7 @@ fun ExpensesApp() {
 
     // Save data whenever it changes
     LaunchedEffect(months) {
-        saveMonths(prefs, months)
+        saveMonths(context, uri, months)
     }
 
     fun updateMonth(index: Int, newMonthData: MonthData) {
@@ -65,8 +148,9 @@ fun ExpensesApp() {
             appendLine("Starting Amount: ${"%.2f".format(monthToExport.startingAmount)}")
             appendLine()
             appendLine("Expenses:")
-            monthToExport.expenses.forEach {
-                appendLine("- ${it.description}: ${"%.2f".format(it.amount)}")
+            monthToExport.expenses.forEach { expense ->
+                val dateString = expense.formattedDate ?: expense.timestamp?.let { sdf.format(Date(it)) } ?: ""
+                appendLine("- ${expense.description}: ${"%.2f".format(expense.amount)} ($dateString)")
             }
             appendLine()
             appendLine("--------------------")
@@ -110,7 +194,7 @@ fun ExpensesApp() {
                 if (line.isBlank() || !line.trim().startsWith("-")) return@mapNotNull null
 
                 val descriptionPart = line.substringBeforeLast(':').removePrefix("-").trim()
-                val amountPart = line.substringAfterLast(':').trim()
+                val amountPart = line.substringAfterLast(':').substringBefore('(').trim()
                 val amount = amountPart.toDoubleOrNull()
 
                 if (descriptionPart.isNotBlank() && amount != null) {
@@ -160,47 +244,52 @@ fun ExpensesApp() {
             lastDeletedExpense = null
         }
 
-        ExpensesTheme(darkTheme = true) {
-            MainScreen(
-                months = months,
-                currentMonth = currentMonth,
-                currentMonthIndex = currentMonthIndex,
-                availableAmount = availableAmount,
-                showNewMonthPrompt = showNewMonthPrompt,
-                lastDeletedExpense = lastDeletedExpense,
-                monthToOverwrite = monthToOverwrite,
-                onConfirmOverwrite = ::confirmOverwriteImport,
-                onCancelOverwrite = { monthToOverwrite = null },
-                onUndoDelete = ::undoDelete,
-                onUndoPromptShown = { lastDeletedExpense = null },
-                onNewMonthPromptShown = { showNewMonthPrompt = false },
-                onMonthSelected = { index -> currentMonthIndex = index },
-                onAddNewMonth = {
-                    val newMonth = createNewMonth()
-                    months = listOf(newMonth) + months
-                    currentMonthIndex = 0
-                    showNewMonthPrompt = true
-                },
-                onDeleteMonth = ::deleteMonth,
-                onExportMonth = ::exportMonth,
-                onImportMonth = ::importMonth,
-                onAddExpense = { expense ->
-                    val newExpenses = listOf(expense.copy(timestamp = System.currentTimeMillis())) + currentMonth.expenses
-                    updateMonth(currentMonthIndex, currentMonth.copy(expenses = newExpenses))
-                },
-                onRemoveExpense = { expenseIndex ->
-                    lastDeletedExpense = currentMonth.expenses[expenseIndex].let { expenseIndex to it }
-                    val newExpenses = currentMonth.expenses.toMutableList().also { it.removeAt(expenseIndex) }
-                    updateMonth(currentMonthIndex, currentMonth.copy(expenses = newExpenses))
-                },
-                onSaveExpenseEdit = { expenseIndex, updatedExpense ->
-                    val newExpenses = currentMonth.expenses.toMutableList().also { it[expenseIndex] = updatedExpense }
-                    updateMonth(currentMonthIndex, currentMonth.copy(expenses = newExpenses))
-                },
-                onStartingAmountChange = { newAmount ->
-                    updateMonth(currentMonthIndex, currentMonth.copy(startingAmount = newAmount))
-                }
-            )
-        }
+        val sdf = SimpleDateFormat("EEEE: d - HH:mm", Locale.getDefault())
+
+        MainScreen(
+            months = months,
+            currentMonth = currentMonth,
+            currentMonthIndex = currentMonthIndex,
+            availableAmount = availableAmount,
+            showNewMonthPrompt = showNewMonthPrompt,
+            lastDeletedExpense = lastDeletedExpense,
+            monthToOverwrite = monthToOverwrite,
+            onConfirmOverwrite = ::confirmOverwriteImport,
+            onCancelOverwrite = { monthToOverwrite = null },
+            onUndoDelete = ::undoDelete,
+            onUndoPromptShown = { lastDeletedExpense = null },
+            onNewMonthPromptShown = { showNewMonthPrompt = false },
+            onMonthSelected = { index -> currentMonthIndex = index },
+            onAddNewMonth = {
+                val newMonth = createNewMonth()
+                months = listOf(newMonth) + months
+                currentMonthIndex = 0
+                showNewMonthPrompt = true
+            },
+            onDeleteMonth = ::deleteMonth,
+            onExportMonth = ::exportMonth,
+            onImportMonth = ::importMonth,
+            onAddExpense = { expense ->
+                val timestamp = System.currentTimeMillis()
+                val formattedDate = sdf.format(Date(timestamp))
+                val newExpense = expense.copy(timestamp = timestamp, formattedDate = formattedDate)
+                val newExpenses = listOf(newExpense) + currentMonth.expenses
+                updateMonth(currentMonthIndex, currentMonth.copy(expenses = newExpenses))
+            },
+            onRemoveExpense = { expenseIndex ->
+                lastDeletedExpense = currentMonth.expenses[expenseIndex].let { expenseIndex to it }
+                val newExpenses = currentMonth.expenses.toMutableList().also { it.removeAt(expenseIndex) }
+                updateMonth(currentMonthIndex, currentMonth.copy(expenses = newExpenses))
+            },
+            onSaveExpenseEdit = { expenseIndex, updatedExpense ->
+                val newExpenses = currentMonth.expenses.toMutableList().also { it[expenseIndex] = updatedExpense }
+                updateMonth(currentMonthIndex, currentMonth.copy(expenses = newExpenses))
+            },
+            onStartingAmountChange = { newAmount ->
+                updateMonth(currentMonthIndex, currentMonth.copy(startingAmount = newAmount))
+            }
+        )
     }
 }
+
+private val sdf = SimpleDateFormat("EEEE: d - HH:mm", Locale.getDefault())

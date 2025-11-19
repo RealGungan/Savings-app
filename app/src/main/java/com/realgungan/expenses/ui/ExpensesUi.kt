@@ -24,9 +24,6 @@ import com.realgungan.expenses.data.Expense
 import com.realgungan.expenses.data.MonthData
 import com.realgungan.expenses.ui.theme.ExpensesTheme
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @Composable
 fun MainScreen(
@@ -235,10 +232,9 @@ fun MainScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(text = "${expense.description}, ${expense.amount}")
-                                expense.timestamp?.let {
-                                    val sdf = SimpleDateFormat("EEEE: d - HH:mm", Locale.getDefault())
+                                expense.formattedDate?.let {
                                     Text(
-                                        text = sdf.format(Date(it)),
+                                        text = it,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
