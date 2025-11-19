@@ -1,6 +1,7 @@
 package com.realgungan.expenses.data
 
-import android.content.SharedPreferences
+import android.content.Context
+import android.net.Uri
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -13,22 +14,31 @@ data class Expense(val description: String, val amount: Double, val timestamp: L
 @Serializable
 data class MonthData(val monthYear: String, val startingAmount: Double, val expenses: List<Expense>)
 
-internal fun loadMonths(prefs: SharedPreferences): List<MonthData> {
-    val jsonString = prefs.getString("all_months_data", null)
-    return if (jsonString != null) {
-        try {
-            Json.decodeFromString<List<MonthData>>(jsonString)
-        } catch (e: Exception) {
-            listOf(createNewMonth())
-        }
-    } else {
+internal fun loadMonths(context: Context, uri: Uri): List<MonthData> {
+    return try {
+        context.contentResolver.openInputStream(uri)?.use { inputStream ->
+            val jsonString = inputStream.bufferedReader().readText()
+            if (jsonString.isNotBlank()) {
+                Json.decodeFromString<List<MonthData>>(jsonString)
+            } else {
+                listOf(createNewMonth())
+            }
+        } ?: listOf(createNewMonth())
+    } catch (e: Exception) {
+        e.printStackTrace()
         listOf(createNewMonth())
     }
 }
 
-internal fun saveMonths(prefs: SharedPreferences, months: List<MonthData>) {
-    val jsonString = Json.encodeToString(months)
-    prefs.edit().putString("all_months_data", jsonString).apply()
+internal fun saveMonths(context: Context, uri: Uri, months: List<MonthData>) {
+    try {
+        context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+            val jsonString = Json.encodeToString(months)
+            outputStream.writer().use { it.write(jsonString) }
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
 }
 
 internal fun createNewMonth(): MonthData {
