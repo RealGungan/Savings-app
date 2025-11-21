@@ -3,8 +3,10 @@ package com.realgungan.expenses.data
 import android.content.Context
 import android.net.Uri
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -19,16 +21,22 @@ data class Expense(
 @Serializable
 data class MonthData(val monthYear: String, val startingAmount: Double, val expenses: List<Expense>)
 
+// A more lenient JSON parser
+private val json = Json { isLenient = true; ignoreUnknownKeys = true }
+
 internal fun loadMonths(context: Context, uri: Uri): List<MonthData> {
     return try {
         context.contentResolver.openInputStream(uri)?.use { inputStream ->
             val jsonString = inputStream.bufferedReader().readText()
             if (jsonString.isNotBlank()) {
-                Json.decodeFromString<List<MonthData>>(jsonString)
+                json.decodeFromString<List<MonthData>>(jsonString)
             } else {
                 listOf(createNewMonth())
             }
         } ?: listOf(createNewMonth())
+    } catch (e: SerializationException) {
+        // This will be caught by the UI and trigger the corrupt file dialog.
+        throw e
     } catch (e: Exception) {
         e.printStackTrace()
         listOf(createNewMonth())
@@ -37,9 +45,16 @@ internal fun loadMonths(context: Context, uri: Uri): List<MonthData> {
 
 internal fun saveMonths(context: Context, uri: Uri, months: List<MonthData>) {
     try {
-        context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-            val jsonString = Json.encodeToString(months)
-            outputStream.writer().use { it.write(jsonString) }
+        // Use a file descriptor with "w" (truncate) mode for a robust, guaranteed overwrite.
+        context.contentResolver.openFileDescriptor(uri, "w")?.use { pfd ->
+            FileOutputStream(pfd.fileDescriptor).use { outputStream ->
+                // Explicitly truncate the file to 0 bytes before writing to prevent corruption.
+                outputStream.channel.truncate(0)
+                val jsonString = Json.encodeToString(months)
+                outputStream.writer().use { writer ->
+                    writer.write(jsonString)
+                }
+            }
         }
     } catch (e: Exception) {
         e.printStackTrace()
