@@ -18,9 +18,17 @@
             android:theme="@style/Theme.Expenses">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Intent filter to handle opening JSON files -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/json" />
+                <data android:scheme="content" />
+            </intent-filter>
+
         </activity>
     </application>
 
