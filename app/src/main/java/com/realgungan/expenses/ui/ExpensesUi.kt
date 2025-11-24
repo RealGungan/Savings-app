@@ -33,36 +33,29 @@ fun MainScreen(
     availableAmount: Double,
     showNewMonthPrompt: Boolean,
     lastDeletedExpense: Pair<Int, Expense>?,
-    monthToOverwrite: MonthData?,
-    onConfirmOverwrite: () -> Unit,
-    onCancelOverwrite: () -> Unit,
     onUndoDelete: () -> Unit,
     onUndoPromptShown: () -> Unit,
     onNewMonthPromptShown: () -> Unit,
     onMonthSelected: (Int) -> Unit,
     onAddNewMonth: () -> Unit,
     onDeleteMonth: (Int) -> Unit,
-    onExportMonth: (MonthData) -> Unit,
+    onExportMonth: () -> Unit,
     onAddExpense: (Expense) -> Unit,
     onRemoveExpense: (Int) -> Unit,
     onSaveExpenseEdit: (Int, Expense) -> Unit,
-    onStartingAmountChange: (Double) -> Unit,
-    onImportMonth: (String) -> Unit
+    onStartingAmountChange: (String) -> Unit
 ) {
     var newExpenseInput by remember { mutableStateOf("") }
     var editingExpenseIndex by remember { mutableStateOf<Int?>(null) }
     var showIncomeDialog by remember { mutableStateOf(false) }
     var showMonthSelector by remember { mutableStateOf(false) }
-    var showImportDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
-    LaunchedEffect(currentMonth, showNewMonthPrompt) {
+    LaunchedEffect(showNewMonthPrompt) {
         if (showNewMonthPrompt) {
             showIncomeDialog = true
             onNewMonthPromptShown()
-        } else if (currentMonth.startingAmount == 0.0 && currentMonth.expenses.isEmpty()) {
-            showIncomeDialog = true
         }
     }
 
@@ -100,26 +93,7 @@ fun MainScreen(
                 onMonthSelected(it)
                 showMonthSelector = false
             },
-            onDeleteMonth = onDeleteMonth,
-            onShowImportDialog = { showImportDialog = true }
-        )
-    }
-
-    if (showImportDialog) {
-        ImportDialog(
-            onDismiss = { showImportDialog = false },
-            onImport = {
-                onImportMonth(it)
-                showImportDialog = false
-            }
-        )
-    }
-
-    if (monthToOverwrite != null) {
-        OverwriteConfirmationDialog(
-            monthName = monthToOverwrite.monthYear,
-            onConfirm = onConfirmOverwrite,
-            onDismiss = onCancelOverwrite
+            onDeleteMonth = onDeleteMonth
         )
     }
 
@@ -130,10 +104,13 @@ fun MainScreen(
             onDismiss = { editingExpenseIndex = null },
             onSave = { updatedText ->
                 val parts = updatedText.split(",").map(String::trim)
+                val isDeferred = parts.last().endsWith("d", ignoreCase = true)
+                val description = parts.first()
+
                 if (parts.size == 2) {
-                    val newAmount = parts[1].toDoubleOrNull() ?: originalExpense.amount
-                    val newDescription = parts[0]
-                    onSaveExpenseEdit(index, originalExpense.copy(description = newDescription, amount = newAmount))
+                    val amountString = if(isDeferred) parts.last().dropLast(1) else parts.last()
+                    val newAmount = amountString.toDoubleOrNull() ?: originalExpense.amount
+                    onSaveExpenseEdit(index, originalExpense.copy(description = description, amount = newAmount, isDeferred = isDeferred))
                 }
                 editingExpenseIndex = null
             }
@@ -151,7 +128,7 @@ fun MainScreen(
                 TextField(
                     value = newExpenseInput,
                     onValueChange = { newExpenseInput = it },
-                    placeholder = { Text("CHEVECHA, 3.5") },
+                    placeholder = { Text("CHEVECHA, 3.7") },
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(Modifier.width(8.dp))
@@ -159,9 +136,14 @@ fun MainScreen(
                     onClick = {
                         val parts = newExpenseInput.split(",").map(String::trim)
                         if (parts.size == 2) {
-                            val amount = parts[1].toDoubleOrNull()
+                            val description = parts[0]
+                            val amountString = parts[1]
+                            val isDeferred = amountString.endsWith("d", ignoreCase = true)
+                            val finalAmountString = if (isDeferred) amountString.dropLast(1) else amountString
+                            val amount = finalAmountString.toDoubleOrNull()
+
                             if (amount != null) {
-                                onAddExpense(Expense(description = parts[0], amount = amount))
+                                onAddExpense(Expense(description = description, amount = amount, isDeferred = isDeferred))
                                 newExpenseInput = ""
                             }
                         }
@@ -209,7 +191,7 @@ fun MainScreen(
                     color = availableColor,
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .clickable { onExportMonth(currentMonth) }
+                        .clickable { onExportMonth() }
                 )
 
                 IconButton(
@@ -231,7 +213,8 @@ fun MainScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(text = "${expense.description}, ${expense.amount}")
+                                val text = if(expense.isDeferred) "${expense.description}, ${expense.amount} (D)" else "${expense.description}, ${expense.amount}"
+                                Text(text = text)
                                 expense.formattedDate?.let {
                                     Text(
                                         text = it,
@@ -260,8 +243,7 @@ fun MonthSelectionDialog(
     months: List<MonthData>,
     onDismiss: () -> Unit,
     onMonthSelected: (Int) -> Unit,
-    onDeleteMonth: (Int) -> Unit,
-    onShowImportDialog: () -> Unit
+    onDeleteMonth: (Int) -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Scaffold(
@@ -271,11 +253,6 @@ fun MonthSelectionDialog(
                     navigationIcon = {
                         IconButton(onClick = onDismiss) {
                             Icon(Icons.Default.Close, contentDescription = "Close")
-                        }
-                    },
-                    actions = {
-                        TextButton(onClick = onShowImportDialog) {
-                            Text("Import")
                         }
                     }
                 )
@@ -307,7 +284,7 @@ fun MonthSelectionDialog(
 }
 
 @Composable
-fun IncomeDialog(onDismiss: () -> Unit, onConfirm: (amount: Double) -> Unit) {
+fun IncomeDialog(onDismiss: () -> Unit, onConfirm: (input: String) -> Unit) {
     var amountInput by remember { mutableStateOf("") }
 
     AlertDialog(
@@ -321,11 +298,7 @@ fun IncomeDialog(onDismiss: () -> Unit, onConfirm: (amount: Double) -> Unit) {
             )
         },
         confirmButton = {
-            TextButton(onClick = {
-                amountInput.toDoubleOrNull()?.let {
-                    onConfirm(it)
-                }
-            }) {
+            TextButton(onClick = { onConfirm(amountInput) }) {
                 Text("Confirm")
             }
         }
@@ -333,54 +306,9 @@ fun IncomeDialog(onDismiss: () -> Unit, onConfirm: (amount: Double) -> Unit) {
 }
 
 @Composable
-fun ImportDialog(onDismiss: () -> Unit, onImport: (String) -> Unit) {
-    var text by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Paste text to import") },
-        text = {
-            TextField(
-                value = text,
-                onValueChange = { text = it },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Paste your expense report here") }
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { onImport(text) }) {
-                Text("Import")
-            }
-        }
-    )
-}
-
-@Composable
-fun OverwriteConfirmationDialog(
-    monthName: String,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Overwrite Month?") },
-        text = { Text("The month '$monthName' already exists. Do you want to overwrite it with the imported data?") },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text("Overwrite")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}
-
-
-@Composable
 fun EditExpenseDialog(expense: Expense, onDismiss: () -> Unit, onSave: (String) -> Unit) {
-    var updatedText by remember { mutableStateOf("${expense.description}, ${expense.amount}") }
+    val initialText = if(expense.isDeferred) "${expense.description}, ${expense.amount}D" else "${expense.description}, ${expense.amount}"
+    var updatedText by remember { mutableStateOf(initialText) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -410,21 +338,17 @@ fun MainScreenPreview() {
             availableAmount = 350.0,
             showNewMonthPrompt = false,
             lastDeletedExpense = null,
-            monthToOverwrite = null,
-            onConfirmOverwrite = {},
-            onCancelOverwrite = {},
             onUndoDelete = {},
             onUndoPromptShown = {},
             onNewMonthPromptShown = {},
             onMonthSelected = {},
             onAddNewMonth = {},
             onDeleteMonth = {},
-            onExportMonth = { _ -> },
+            onExportMonth = {},
             onAddExpense = {},
             onRemoveExpense = {},
             onSaveExpenseEdit = { _, _ -> },
-            onStartingAmountChange = {},
-            onImportMonth = { _ -> }
+            onStartingAmountChange = {}
         )
     }
 }
