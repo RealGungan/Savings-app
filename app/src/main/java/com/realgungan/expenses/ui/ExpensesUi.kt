@@ -25,7 +25,6 @@ import com.realgungan.expenses.data.MonthData
 import com.realgungan.expenses.ui.theme.ExpensesTheme
 import kotlinx.coroutines.launch
 
-// This is the main screen of the application.
 @Composable
 fun MainScreen(
     months: List<MonthData>,
@@ -44,7 +43,7 @@ fun MainScreen(
     onAddExpense: (Expense) -> Unit,
     onRemoveExpense: (Int) -> Unit,
     onSaveExpenseEdit: (Int, Expense) -> Unit,
-    onStartingAmountChange: (Double) -> Unit
+    onStartingAmountChange: (String) -> Unit
 ) {
     var newExpenseInput by remember { mutableStateOf("") }
     var editingExpenseIndex by remember { mutableStateOf<Int?>(null) }
@@ -105,10 +104,13 @@ fun MainScreen(
             onDismiss = { editingExpenseIndex = null },
             onSave = { updatedText ->
                 val parts = updatedText.split(",").map(String::trim)
+                val isDeferred = parts.last().endsWith("d", ignoreCase = true)
+                val description = parts.first()
+
                 if (parts.size == 2) {
-                    val newAmount = parts[1].toDoubleOrNull() ?: originalExpense.amount
-                    val newDescription = parts[0]
-                    onSaveExpenseEdit(index, originalExpense.copy(description = newDescription, amount = newAmount))
+                    val amountString = if(isDeferred) parts.last().dropLast(1) else parts.last()
+                    val newAmount = amountString.toDoubleOrNull() ?: originalExpense.amount
+                    onSaveExpenseEdit(index, originalExpense.copy(description = description, amount = newAmount, isDeferred = isDeferred))
                 }
                 editingExpenseIndex = null
             }
@@ -134,9 +136,14 @@ fun MainScreen(
                     onClick = {
                         val parts = newExpenseInput.split(",").map(String::trim)
                         if (parts.size == 2) {
-                            val amount = parts[1].toDoubleOrNull()
+                            val description = parts[0]
+                            val amountString = parts[1]
+                            val isDeferred = amountString.endsWith("d", ignoreCase = true)
+                            val finalAmountString = if (isDeferred) amountString.dropLast(1) else amountString
+                            val amount = finalAmountString.toDoubleOrNull()
+
                             if (amount != null) {
-                                onAddExpense(Expense(description = parts[0], amount = amount))
+                                onAddExpense(Expense(description = description, amount = amount, isDeferred = isDeferred))
                                 newExpenseInput = ""
                             }
                         }
@@ -206,7 +213,8 @@ fun MainScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(text = "${expense.description}, ${expense.amount}")
+                                val text = if(expense.isDeferred) "${expense.description}, ${expense.amount} (D)" else "${expense.description}, ${expense.amount}"
+                                Text(text = text)
                                 expense.formattedDate?.let {
                                     Text(
                                         text = it,
@@ -276,7 +284,7 @@ fun MonthSelectionDialog(
 }
 
 @Composable
-fun IncomeDialog(onDismiss: () -> Unit, onConfirm: (amount: Double) -> Unit) {
+fun IncomeDialog(onDismiss: () -> Unit, onConfirm: (input: String) -> Unit) {
     var amountInput by remember { mutableStateOf("") }
 
     AlertDialog(
@@ -290,11 +298,7 @@ fun IncomeDialog(onDismiss: () -> Unit, onConfirm: (amount: Double) -> Unit) {
             )
         },
         confirmButton = {
-            TextButton(onClick = {
-                amountInput.toDoubleOrNull()?.let {
-                    onConfirm(it)
-                }
-            }) {
+            TextButton(onClick = { onConfirm(amountInput) }) {
                 Text("Confirm")
             }
         }
@@ -303,7 +307,8 @@ fun IncomeDialog(onDismiss: () -> Unit, onConfirm: (amount: Double) -> Unit) {
 
 @Composable
 fun EditExpenseDialog(expense: Expense, onDismiss: () -> Unit, onSave: (String) -> Unit) {
-    var updatedText by remember { mutableStateOf("${expense.description}, ${expense.amount}") }
+    val initialText = if(expense.isDeferred) "${expense.description}, ${expense.amount}D" else "${expense.description}, ${expense.amount}"
+    var updatedText by remember { mutableStateOf(initialText) }
 
     AlertDialog(
         onDismissRequest = onDismiss,

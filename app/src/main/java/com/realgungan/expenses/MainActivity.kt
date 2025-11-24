@@ -163,6 +163,7 @@ fun ExpensesApp(uri: Uri, onCorruptFile: () -> Unit) {
     }
 }
 
+
 @Composable
 fun ExpensesAppContent(uri: Uri, initialMonths: List<MonthData>, onCorruptFile: () -> Unit) {
     val context = LocalContext.current
@@ -205,7 +206,7 @@ fun ExpensesAppContent(uri: Uri, initialMonths: List<MonthData>, onCorruptFile: 
     val currentMonth = months.getOrNull(currentMonthIndex)
 
     if (currentMonth != null) {
-        val availableAmount = currentMonth.startingAmount - currentMonth.expenses.sumOf { it.amount }
+        val availableAmount = currentMonth.startingAmount - currentMonth.expenses.filter { !it.isDeferred }.sumOf { it.amount }
 
         fun undoDelete() {
             lastDeletedExpense?.let { (index, expense) ->
@@ -227,8 +228,18 @@ fun ExpensesAppContent(uri: Uri, initialMonths: List<MonthData>, onCorruptFile: 
             onNewMonthPromptShown = { showNewMonthPrompt = false },
             onMonthSelected = { index -> currentMonthIndex = index },
             onAddNewMonth = {
-                val newMonth = createNewMonth()
-                months = listOf(newMonth) + months
+                val sourceMonth = months[currentMonthIndex]
+                val deferredExpensesToCopy = sourceMonth.expenses.filter { it.isDeferred }
+
+                val newMonth = createNewMonth().copy(
+                    expenses = deferredExpensesToCopy.map { it.copy(isDeferred = false) }
+                )
+
+                // The old month is not changed. The deferred expenses remain.
+                val newMonthsList = months.toMutableList()
+                newMonthsList.add(0, newMonth)
+                months = newMonthsList
+
                 currentMonthIndex = 0
                 showNewMonthPrompt = true
             },
@@ -238,7 +249,7 @@ fun ExpensesAppContent(uri: Uri, initialMonths: List<MonthData>, onCorruptFile: 
                 val timestamp = System.currentTimeMillis()
                 val formattedDate = SimpleDateFormat("EEEE: d - HH:mm", Locale.getDefault()).format(Date(timestamp))
                 val newExpense = expense.copy(timestamp = timestamp, formattedDate = formattedDate)
-                val newExpenses = listOf(newExpense) + currentMonth.expenses
+                val newExpenses = currentMonth.expenses.toMutableList().apply { add(0, newExpense) }
                 updateMonth(currentMonthIndex, currentMonth.copy(expenses = newExpenses))
             },
             onRemoveExpense = { expenseIndex ->
@@ -251,7 +262,8 @@ fun ExpensesAppContent(uri: Uri, initialMonths: List<MonthData>, onCorruptFile: 
                 updateMonth(currentMonthIndex, currentMonth.copy(expenses = newExpenses))
             },
             onStartingAmountChange = { newAmount ->
-                updateMonth(currentMonthIndex, currentMonth.copy(startingAmount = newAmount))
+                val amount = newAmount.toDoubleOrNull() ?: 0.0
+                updateMonth(currentMonthIndex, currentMonth.copy(startingAmount = amount))
             }
         )
     }

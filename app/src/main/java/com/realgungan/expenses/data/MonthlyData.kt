@@ -15,7 +15,8 @@ data class Expense(
     val description: String,
     val amount: Double,
     val timestamp: Long? = null,
-    val formattedDate: String? = null
+    val formattedDate: String? = null,
+    val isDeferred: Boolean = false
 )
 
 @Serializable
