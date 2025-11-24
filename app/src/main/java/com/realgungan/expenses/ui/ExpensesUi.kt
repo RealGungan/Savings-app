@@ -128,7 +128,7 @@ fun MainScreen(
                 TextField(
                     value = newExpenseInput,
                     onValueChange = { newExpenseInput = it },
-                    placeholder = { Text("CHEVECHA, 3.7") },
+                    placeholder = { Text("CHEVECHA, 3.5") },
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(Modifier.width(8.dp))

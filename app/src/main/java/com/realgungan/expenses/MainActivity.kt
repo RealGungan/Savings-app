@@ -32,8 +32,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val sdf = SimpleDateFormat("EEEE: d - HH:mm", Locale.getDefault())
-
 class MainActivity : ComponentActivity() {
 
     private var fileUri by mutableStateOf<Uri?>(null)
@@ -160,13 +158,14 @@ fun ExpensesApp(uri: Uri, onCorruptFile: () -> Unit) {
 
     if (monthsData.isNotEmpty()) {
         ExpensesTheme(darkTheme = true) {
-            ExpensesAppContent(uri, monthsData)
+            ExpensesAppContent(uri, monthsData, onCorruptFile = onCorruptFile)
         }
     }
 }
 
+
 @Composable
-fun ExpensesAppContent(uri: Uri, initialMonths: List<MonthData>) {
+fun ExpensesAppContent(uri: Uri, initialMonths: List<MonthData>, onCorruptFile: () -> Unit) {
     val context = LocalContext.current
 
     var months by remember { mutableStateOf(initialMonths) }
@@ -248,7 +247,7 @@ fun ExpensesAppContent(uri: Uri, initialMonths: List<MonthData>) {
             onExportMonth = ::exportMonth,
             onAddExpense = { expense ->
                 val timestamp = System.currentTimeMillis()
-                val formattedDate = sdf.format(Date(timestamp))
+                val formattedDate = SimpleDateFormat("EEEE: d - HH:mm", Locale.getDefault()).format(Date(timestamp))
                 val newExpense = expense.copy(timestamp = timestamp, formattedDate = formattedDate)
                 val newExpenses = currentMonth.expenses.toMutableList().apply { add(0, newExpense) }
                 updateMonth(currentMonthIndex, currentMonth.copy(expenses = newExpenses))
