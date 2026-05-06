@@ -24,6 +24,7 @@ import com.realgungan.expenses.data.Expense
 import com.realgungan.expenses.data.MonthData
 import com.realgungan.expenses.ui.theme.ExpensesTheme
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 @Composable
 fun MainScreen(
@@ -104,13 +105,49 @@ fun MainScreen(
             onDismiss = { editingExpenseIndex = null },
             onSave = { updatedText ->
                 val parts = updatedText.split(",").map(String::trim)
-                val isDeferred = parts.last().endsWith("d", ignoreCase = true)
-                val description = parts.first()
+                if (parts.size >= 2) {
+                    val description = parts[0]
+                    var amountString = parts[1]
 
-                if (parts.size == 2) {
-                    val amountString = if(isDeferred) parts.last().dropLast(1) else parts.last()
-                    val newAmount = amountString.toDoubleOrNull() ?: originalExpense.amount
-                    onSaveExpenseEdit(index, originalExpense.copy(description = description, amount = newAmount, isDeferred = isDeferred))
+                    var isDeferred = false
+                    var totalMonths = 1
+
+                    if (parts.size >= 3) {
+                        val debtPart = parts[2].lowercase()
+                        if (debtPart.endsWith("dx")) {
+                            isDeferred = true
+                            totalMonths = debtPart.dropLast(2).toIntOrNull() ?: 1
+                        } else if (debtPart.endsWith("d")) {
+                            totalMonths = debtPart.dropLast(1).toIntOrNull() ?: 1
+                        }
+                    }
+
+                    if (totalMonths == 1 && amountString.endsWith("d", ignoreCase = true)) {
+                        isDeferred = true
+                        amountString = amountString.dropLast(1)
+                    }
+
+                    val amount = amountString.toDoubleOrNull() ?: originalExpense.amount
+                    
+                    // If totalMonths or isDeferred changed, we treat it as a new debt calculation
+                    val updatedExpense = if (totalMonths != originalExpense.totalMonths || isDeferred != originalExpense.isDeferred) {
+                        originalExpense.copy(
+                            description = description,
+                            amount = amount,
+                            isDeferred = isDeferred,
+                            totalMonths = totalMonths,
+                            remainingMonths = totalMonths,
+                            startMonth = null,
+                            endMonth = null
+                        )
+                    } else {
+                        originalExpense.copy(
+                            description = description,
+                            amount = amount,
+                            isDeferred = isDeferred
+                        )
+                    }
+                    onSaveExpenseEdit(index, updatedExpense)
                 }
                 editingExpenseIndex = null
             }
@@ -135,15 +172,38 @@ fun MainScreen(
                 Button(
                     onClick = {
                         val parts = newExpenseInput.split(",").map(String::trim)
-                        if (parts.size == 2) {
+                        if (parts.size >= 2) {
                             val description = parts[0]
-                            val amountString = parts[1]
-                            val isDeferred = amountString.endsWith("d", ignoreCase = true)
-                            val finalAmountString = if (isDeferred) amountString.dropLast(1) else amountString
-                            val amount = finalAmountString.toDoubleOrNull()
+                            var amountString = parts[1]
+
+                            var isDeferred = false
+                            var totalMonths = 1
+
+                            if (parts.size >= 3) {
+                                val debtPart = parts[2].lowercase()
+                                if (debtPart.endsWith("dx")) {
+                                    isDeferred = true
+                                    totalMonths = debtPart.dropLast(2).toIntOrNull() ?: 1
+                                } else if (debtPart.endsWith("d")) {
+                                    totalMonths = debtPart.dropLast(1).toIntOrNull() ?: 1
+                                }
+                            }
+
+                            if (totalMonths == 1 && amountString.endsWith("d", ignoreCase = true)) {
+                                isDeferred = true
+                                amountString = amountString.dropLast(1)
+                            }
+
+                            val amount = amountString.toDoubleOrNull()
 
                             if (amount != null) {
-                                onAddExpense(Expense(description = description, amount = amount, isDeferred = isDeferred))
+                                onAddExpense(Expense(
+                                    description = description,
+                                    amount = amount,
+                                    isDeferred = isDeferred,
+                                    totalMonths = totalMonths,
+                                    remainingMonths = totalMonths
+                                ))
                                 newExpenseInput = ""
                             }
                         }
@@ -213,11 +273,18 @@ fun MainScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                val text = if(expense.isDeferred) "${expense.description}, ${expense.amount} (D)" else "${expense.description}, ${expense.amount}"
+                                val text = buildString {
+                                    append("${expense.description}, ${String.format(Locale.US, "%.2f", expense.amount)}")
+                                    if (expense.isDeferred) append(" (D)")
+                                    if (expense.totalMonths > 1) {
+                                        append(" (Debt from ${expense.startMonth} till ${expense.endMonth})")
+                                    }
+                                }
                                 Text(text = text)
                                 expense.formattedDate?.let {
+                                    val label = if (expense.totalMonths > 1 || expense.startMonth != null) "Debt created:" else "Created:"
                                     Text(
-                                        text = it,
+                                        text = "$label $it",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -307,7 +374,15 @@ fun IncomeDialog(onDismiss: () -> Unit, onConfirm: (input: String) -> Unit) {
 
 @Composable
 fun EditExpenseDialog(expense: Expense, onDismiss: () -> Unit, onSave: (String) -> Unit) {
-    val initialText = if(expense.isDeferred) "${expense.description}, ${expense.amount}D" else "${expense.description}, ${expense.amount}"
+    val initialText = buildString {
+        if (expense.totalMonths > 1) {
+            append("${expense.description}, ${String.format(Locale.US, "%.2f", expense.amount * expense.totalMonths)}, ${expense.totalMonths}d")
+            if (expense.isDeferred) append("x")
+        } else {
+            append("${expense.description}, ${expense.amount}")
+            if (expense.isDeferred) append("d")
+        }
+    }
     var updatedText by remember { mutableStateOf(initialText) }
 
     AlertDialog(
