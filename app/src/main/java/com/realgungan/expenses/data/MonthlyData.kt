@@ -16,7 +16,11 @@ data class Expense(
     val amount: Double,
     val timestamp: Long? = null,
     val formattedDate: String? = null,
-    val isDeferred: Boolean = false
+    val isDeferred: Boolean = false,
+    val totalMonths: Int = 1,
+    val remainingMonths: Int = 1,
+    val startMonth: String? = null,
+    val endMonth: String? = null
 )
 
 @Serializable

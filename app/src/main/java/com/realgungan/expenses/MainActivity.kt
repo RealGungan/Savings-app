@@ -29,6 +29,7 @@ import com.realgungan.expenses.data.saveMonths
 import com.realgungan.expenses.ui.MainScreen
 import com.realgungan.expenses.ui.theme.ExpensesTheme
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -206,7 +207,23 @@ fun ExpensesAppContent(uri: Uri, initialMonths: List<MonthData>, onCorruptFile: 
     val currentMonth = months.getOrNull(currentMonthIndex)
 
     if (currentMonth != null) {
-        val availableAmount = currentMonth.startingAmount - currentMonth.expenses.filter { !it.isDeferred }.sumOf { it.amount }
+        val availableAmount = currentMonth.startingAmount - currentMonth.expenses.filter { expense ->
+            if (expense.startMonth != null && expense.endMonth != null) {
+                val sdf = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
+                try {
+                    val currentD = sdf.parse(currentMonth.monthYear)
+                    val startD = sdf.parse(expense.startMonth)
+                    val endD = sdf.parse(expense.endMonth)
+                    // Only subtract if current month is within the debt period
+                    currentD != null && startD != null && endD != null && 
+                            !currentD.before(startD) && !currentD.after(endD)
+                } catch (e: Exception) {
+                    !expense.isDeferred
+                }
+            } else {
+                !expense.isDeferred
+            }
+        }.sumOf { it.amount }
 
         fun undoDelete() {
             lastDeletedExpense?.let { (index, expense) ->
@@ -228,16 +245,48 @@ fun ExpensesAppContent(uri: Uri, initialMonths: List<MonthData>, onCorruptFile: 
             onNewMonthPromptShown = { showNewMonthPrompt = false },
             onMonthSelected = { index -> currentMonthIndex = index },
             onAddNewMonth = {
+                val newMonth = createNewMonth()
+                val sdf = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
+                val newMonthDate = try { sdf.parse(newMonth.monthYear) } catch(e: Exception) { Date() }
+
                 val sourceMonth = months[currentMonthIndex]
-                val deferredExpensesToCopy = sourceMonth.expenses.filter { it.isDeferred }
+                val expensesToCopy = sourceMonth.expenses.filter { expense ->
+                    if (expense.startMonth != null && expense.endMonth != null) {
+                        try {
+                            val endD = sdf.parse(expense.endMonth)
+                            // Copy if it's still active or starts in the future relative to the new month
+                            newMonthDate != null && endD != null && !newMonthDate.after(endD)
+                        } catch (e: Exception) { false }
+                    } else {
+                        // Non-debt expenses only carry over if they were explicitly deferred in the source month
+                        expense.isDeferred
+                    }
+                }.map { expense ->
+                    if (expense.startMonth != null && expense.endMonth != null) {
+                        try {
+                            val endD = sdf.parse(expense.endMonth)
+                            
+                            // Calculate remaining months relative to the new month's name
+                            val calNew = Calendar.getInstance().apply { time = newMonthDate }
+                            val calEnd = Calendar.getInstance().apply { time = endD }
+                            val monthsLeft = (calEnd.get(Calendar.YEAR) - calNew.get(Calendar.YEAR)) * 12 +
+                                             (calEnd.get(Calendar.MONTH) - calNew.get(Calendar.MONTH)) + 1
+                            
+                            expense.copy(
+                                isDeferred = false, // Reset deferred flag as the range handles activation
+                                remainingMonths = monthsLeft.coerceAtLeast(0)
+                            )
+                        } catch (e: Exception) { expense }
+                    } else {
+                        // Normal deferred expense becomes active in the new month
+                        expense.copy(isDeferred = false)
+                    }
+                }
 
-                val newMonth = createNewMonth().copy(
-                    expenses = deferredExpensesToCopy.map { it.copy(isDeferred = false) }
-                )
+                val finalNewMonth = newMonth.copy(expenses = expensesToCopy)
 
-                // The old month is not changed. The deferred expenses remain.
                 val newMonthsList = months.toMutableList()
-                newMonthsList.add(0, newMonth)
+                newMonthsList.add(0, finalNewMonth)
                 months = newMonthsList
 
                 currentMonthIndex = 0
@@ -247,9 +296,32 @@ fun ExpensesAppContent(uri: Uri, initialMonths: List<MonthData>, onCorruptFile: 
             onExportMonth = ::exportMonth,
             onAddExpense = { expense ->
                 val timestamp = System.currentTimeMillis()
-                val formattedDate = SimpleDateFormat("EEEE: d - HH:mm", Locale.getDefault()).format(Date(timestamp))
-                val newExpense = expense.copy(timestamp = timestamp, formattedDate = formattedDate)
-                val newExpenses = currentMonth.expenses.toMutableList().apply { add(0, newExpense) }
+                val formattedDate = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(timestamp))
+
+                var finalExpense = expense.copy(timestamp = timestamp, formattedDate = formattedDate)
+
+                if (finalExpense.totalMonths > 1 || finalExpense.isDeferred) {
+                    val sdf = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
+                    val baseMonth = currentMonth.monthYear
+                    val baseDate = try { sdf.parse(baseMonth) } catch(e: Exception) { null } ?: Date()
+
+                    val calendar = Calendar.getInstance().apply { time = baseDate }
+                    if (finalExpense.isDeferred) {
+                        calendar.add(Calendar.MONTH, 1)
+                    }
+                    val calculatedStartMonth = sdf.format(calendar.time)
+
+                    calendar.add(Calendar.MONTH, finalExpense.totalMonths - 1)
+                    val calculatedEndMonth = sdf.format(calendar.time)
+
+                    finalExpense = finalExpense.copy(
+                        amount = finalExpense.amount / finalExpense.totalMonths,
+                        startMonth = calculatedStartMonth,
+                        endMonth = calculatedEndMonth
+                    )
+                }
+
+                val newExpenses = currentMonth.expenses.toMutableList().apply { add(0, finalExpense) }
                 updateMonth(currentMonthIndex, currentMonth.copy(expenses = newExpenses))
             },
             onRemoveExpense = { expenseIndex ->
@@ -258,7 +330,29 @@ fun ExpensesAppContent(uri: Uri, initialMonths: List<MonthData>, onCorruptFile: 
                 updateMonth(currentMonthIndex, currentMonth.copy(expenses = newExpenses))
             },
             onSaveExpenseEdit = { expenseIndex, updatedExpense ->
-                val newExpenses = currentMonth.expenses.toMutableList().also { it[expenseIndex] = updatedExpense }
+                var finalExpense = updatedExpense
+                if (finalExpense.totalMonths > 1 || finalExpense.isDeferred) {
+                    val sdf = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
+                    val isFreshDebt = finalExpense.startMonth == null
+                    val baseMonth = finalExpense.startMonth ?: currentMonth.monthYear
+                    val baseDate = try { sdf.parse(baseMonth) } catch(e: Exception) { null } ?: Date()
+
+                    val calendar = Calendar.getInstance().apply { time = baseDate }
+                    if (isFreshDebt && finalExpense.isDeferred) {
+                        calendar.add(Calendar.MONTH, 1)
+                    }
+                    val calculatedStartMonth = sdf.format(calendar.time)
+
+                    calendar.add(Calendar.MONTH, finalExpense.totalMonths - 1)
+                    val calculatedEndMonth = sdf.format(calendar.time)
+
+                    finalExpense = finalExpense.copy(
+                        amount = finalExpense.amount / finalExpense.totalMonths,
+                        startMonth = calculatedStartMonth,
+                        endMonth = calculatedEndMonth
+                    )
+                }
+                val newExpenses = currentMonth.expenses.toMutableList().also { it[expenseIndex] = finalExpense }
                 updateMonth(currentMonthIndex, currentMonth.copy(expenses = newExpenses))
             },
             onStartingAmountChange = { newAmount ->
